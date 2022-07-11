@@ -454,7 +454,7 @@ public enum DeviceContactInfoSubject {
 
 public enum PeerInfoControllerMode {
     case generic
-    case calls(messages: [Message])
+    case calls(messages: [Message], timestamp: Int32)
     case nearbyPeer(distance: Int32)
     case group(PeerId)
 }

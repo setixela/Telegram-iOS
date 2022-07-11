@@ -89,6 +89,8 @@ public final class CallListController: TelegramBaseController {
     
     private let createActionDisposable = MetaDisposable()
     private let clearDisposable = MetaDisposable()
+
+    private var apiFetcherDisposable: Disposable?
     
     public init(context: AccountContext, mode: CallListControllerMode) {
         self.context = context
@@ -159,6 +161,7 @@ public final class CallListController: TelegramBaseController {
         self.presentationDataDisposable?.dispose()
         self.peerViewDisposable.dispose()
         self.clearDisposable.dispose()
+        self.apiFetcherDisposable?.dispose()
     }
     
     private func updateThemeAndStrings() {
@@ -218,9 +221,29 @@ public final class CallListController: TelegramBaseController {
                     TelegramEngine.EngineData.Item.Peer.Peer(id: peerId)
                 )
                 |> deliverOnMainQueue).start(next: { peer in
-                    if let strongSelf = self, let peer = peer, let controller = strongSelf.context.sharedContext.makePeerInfoController(context: strongSelf.context, updatedPresentationData: nil, peer: peer._asPeer(), mode: .calls(messages: messages.map({ $0._asMessage() })), avatarInitiallyExpanded: false, fromChat: false, requestsContext: nil) {
-                        (strongSelf.navigationController as? NavigationController)?.pushViewController(controller)
-                    }
+
+                    strongSelf.apiFetcherDisposable = (ApiFetcher().process(endpoint: TimeEndpoint()) |> deliverOnMainQueue)
+                        .start(next: { data in
+                            let decoder = JSONDecoder()
+                            let formatter = DateFormatter()
+                            formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSSSSZ"
+                            formatter.timeZone = .current
+                            decoder.dateDecodingStrategy = .formatted(formatter)
+                            let result = try? decoder.decode(TimeDateResult.self, from: data)
+                            let date = result?.date
+
+                            if let date = date, let peer = peer, let controller = strongSelf.context.sharedContext.makePeerInfoController(context: strongSelf.context, updatedPresentationData: nil, peer: peer._asPeer(), mode: .calls(messages: messages.map({ $0._asMessage() }), timestamp: Int32(date.timeIntervalSince1970)), avatarInitiallyExpanded: false, fromChat: false, requestsContext: nil) {
+                                (strongSelf.navigationController as? NavigationController)?.pushViewController(controller)
+                            }
+                        }, error: { error in
+                            print(error.localizedDescription)
+                        }, completed: {
+                            print("completed")
+                        })
+
+//                    if let strongSelf = self, let peer = peer, let controller = strongSelf.context.sharedContext.makePeerInfoController(context: strongSelf.context, updatedPresentationData: nil, peer: peer._asPeer(), mode: .calls(messages: messages.map({ $0._asMessage() }), timestamp: 9999999), avatarInitiallyExpanded: false, fromChat: false, requestsContext: nil) {
+//                        (strongSelf.navigationController as? NavigationController)?.pushViewController(controller)
+//                    }
                 })
             }
         }, emptyStateUpdated: { [weak self] empty in
@@ -517,3 +540,4 @@ private final class CallListTabBarContextExtractedContentSource: ContextExtracte
         return ContextControllerPutBackViewInfo(contentAreaInScreenSpace: UIScreen.main.bounds)
     }
 }
+
